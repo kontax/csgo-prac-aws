@@ -1,0 +1,466 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  aws-urlwatch
+
+  Scheduled running of URLWatch within an ECS task
+
+
+Parameters:
+
+  # Shared ID's
+  HostedZoneId:
+    Type: String
+    Description: The ID of the Route53 hosted zone to add a DNS recordset to
+  DnsHostname:
+    Type: String
+    Description: The hostname for the DNS record, which will be prefixed with csgo
+
+  # Secret keys
+  PushoverToken:
+    Type: String
+    Description: Token used to notify of update errors via Pushover
+    Default: '{{resolve:ssm:pushoverToken:1}}'
+  PushoverUser:
+    Type: String
+    Description: User used to notify update errors via Pushover
+    Default: '{{resolve:ssm:pushoverUser:1}}'
+
+  # Server Details
+  ServerHostname:
+    Type: String
+    Description: Hostname of the server
+    Default: '{{resolve:secretsmanager:csgo-docker/server-details:SecretString:ServerHostname}}'
+  ServerPassword:
+    Type: String
+    Description: Password for the server
+    Default: '{{resolve:secretsmanager:csgo-docker/server-details:SecretString:ServerPassword}}'
+  RconPassword:
+    Type: String
+    Description: Password for rcon commands within the server
+    Default: '{{resolve:secretsmanager:csgo-docker/server-details:SecretString:RconPassword}}'
+  GameLoginToken:
+    Type: String
+    Description: Steam token used to log into the steam servers
+    Default: '{{resolve:secretsmanager:csgo-docker/server-details:SecretString:GameLoginToken}}'
+  WebApiKey:
+    Type: String
+    Description: API Key used to access maps from the Steam Workshop
+    Default: '{{resolve:secretsmanager:csgo-docker/server-details:SecretString:WebApiKey}}'
+  SourcemodAdmins:
+    Type: String
+    Description: Comma-separated Steam ID's who are able to run admin commands on the server
+    Default: '{{resolve:secretsmanager:csgo-docker/server-details:SecretString:WebApiKey}}'
+
+
+Globals:
+  Function:
+    Timeout: 3
+    Runtime: python3.9
+
+Resources:
+
+  ###
+  # Functions
+  ##
+
+  CsgoUpdateScheduleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Schedule for updating the server
+      Name: !Sub "${AWS::StackName}-update-rule"
+      RoleArn: !Ref CsgoUpdateRuleRole
+      ScheduleExpression: cron(0 0 * * ? *)
+      State: ENABLED
+      Targets:
+        -
+          Id: !Sub "${AWS::StackName}-scheduler"
+          Arn: !GetAtt: CsgoServerCluster.Arn
+          EcsParameters:
+            LaunchType: FARGATE
+            NetworkConfiguration:
+              AwsVcpConfiguration:
+                Subnets:
+                  - !Ref CsgoServerSubnet
+                SecurityGroups:
+                  - !Ref CsgoServerTaskSecurityGroup
+                AssignPublicIp: ENABLED
+            TaskDefinition: !Ref CsgoServerTaskDefinition
+            #TODO: Environment Variables??
+
+
+
+  CsgoServerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-scheduler"
+      Description: Scheduled execution of the CsgoServer ECS task
+      CodeUri: urlwatch_lambda
+      Handler: urlwatch_start_ecs.handler
+      Timeout: 60
+      Role: !GetAtt ExecuteTaskRole.Arn
+      DeadLetterQueue:
+        TargetArn: !GetAtt ErrorQueue.Arn
+        Type: SQS
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt ErrorQueue.QueueName
+      Environment:
+        Variables:
+          ECS_CLUSTER: !Ref CsgoServerCluster
+          TASK_DEFN: !Ref CsgoServerTaskDefinition
+          SUBNETS: !Ref CsgoServerSubnet
+          SECURITY_GROUPS: !Ref CsgoServerTaskSecurityGroup
+      Events:
+        RepoUpdateSchedule:
+          Type: Schedule
+          Properties:
+            Schedule: cron(0 0 * * ? *)
+      Layers:
+        - !Ref AwsLayer
+
+  ErrorHandlerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-error-handler"
+      Description: Catch and notify on errors in other functions
+      CodeUri: reporting
+      Handler: error_reporting.handler
+      Timeout: 30
+      Environment:
+        Variables:
+          PUSHOVER_TOKEN: !Ref PushoverToken
+          PUSHOVER_USER: !Ref PushoverUser
+      Events:
+        ErrorQueue:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt ErrorQueue.Arn
+
+  AwsLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub "${AWS::StackName}-dependencies"
+      Description: Dependencies for PKGBUILD apps
+      ContentUri: src/
+      CompatibleRuntimes:
+        - python3.8
+        - python3.9
+      LicenseInfo: 'MIT'
+      RetentionPolicy: Retain
+
+  ErrorQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${AWS::StackName}-error-queue"
+      VisibilityTimeout: 30
+
+  ###
+  # Networking
+  ##
+
+  # The ECS task needs to be on the same VPC as the EFS instance, and also
+  # needs internet connectivity to download the image from docker hub. This 
+  # VPC creates a single public subnet which routes through an internet 
+  # gateway to allow for this.
+
+  CsgoServerVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 172.31.0.0/16
+      EnableDnsHostnames: True
+      EnableDnsSupport: True
+
+  CsgoServerInternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  CsgoServerInternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref CsgoServerInternetGateway
+      VpcId: !Ref CsgoServerVPC
+
+  CsgoServerSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 172.31.1.0/24
+      VpcId: !Ref CsgoServerVPC
+      AvailabilityZone: "eu-west-1a"
+      MapPublicIpOnLaunch: True
+
+  CsgoServerNatGatewayEIP:
+    Type: AWS::EC2::EIP
+    DependsOn: CsgoServerInternetGatewayAttachment
+    Properties:
+      Domain: vpc
+
+  CsgoServerNatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt CsgoServerNatGatewayEIP.AllocationId
+      SubnetId: !Ref CsgoServerSubnet
+
+  CsgoServerRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref CsgoServerVPC
+
+  CsgoServerRoute:
+    Type: AWS::EC2::Route
+    DependsOn: CsgoServerInternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref CsgoServerRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref CsgoServerInternetGateway
+
+  CsgoServerRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref CsgoServerRouteTable
+      SubnetId: !Ref CsgoServerSubnet
+
+  CsgoServerHostname:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub "csgo.${DnsHostname}"
+      ResourceRecords:
+        - !Ref CsgoServerNatGatewayEIP
+      TTL: 900
+      Type: A
+
+  ###
+  # EFS
+  ##
+
+  CsgoServerFileSystem:
+    Type: 'AWS::EFS::FileSystem'
+    Properties:
+      PerformanceMode: generalPurpose
+      Encrypted: true
+      FileSystemPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Action:
+              - "elasticfilesystem:ClientMount"
+              - "elasticfilesystem:ClientWrite"
+            Principal:
+              AWS: "*"
+
+  CsgoServerMountPoint:
+    Type: 'AWS::EFS::MountTarget'
+    Properties:
+      FileSystemId: !Ref CsgoServerFileSystem
+      SubnetId: !Ref CsgoServerSubnet
+      SecurityGroups:
+      - !Ref CsgoServerEfsSecurityGroup
+
+  CsgoServerAccessPoint:
+    Type: 'AWS::EFS::AccessPoint'
+    Properties:
+      FileSystemId: !Ref CsgoServerFileSystem
+      PosixUser:
+        Uid: "1000"
+        Gid: "1000"
+      RootDirectory:
+        CreationInfo:
+          OwnerGid: "1000"
+          OwnerUid: "1000"
+          Permissions: "0777"
+        Path: "/home/steam/csgo"
+
+  CsgoServerEfsSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: "Security group for the EFS"
+      VpcId: !Ref CsgoServerVPC
+      SecurityGroupIngress:
+        -
+          Description: "Inbound port for EFS"
+          FromPort: 2049
+          IpProtocol: "tcp"
+          ToPort: 2049
+          SourceSecurityGroupId: !Ref CsgoServerTaskSecurityGroup
+
+  ###
+  # ECS
+  ##
+
+  CsgoServerCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub "${AWS::StackName}-cluster"
+
+  CsgoServerTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    DependsOn:
+      - CsgoServerFileSystem
+    Properties:
+      Family: !Sub "${AWS::StackName}-task"
+      Cpu: "256"
+      Memory: "512"
+      NetworkMode: "awsvpc"
+      RequiresCompatibilities:
+        - "FARGATE"
+      TaskRoleArn: !GetAtt CsgoServerTaskRole.Arn
+      ExecutionRoleArn: !GetAtt CsgoServerTaskRole.Arn
+      ContainerDefinitions:
+        - Name: !Sub "${AWS::StackName}-container"
+          Image: "couldinho/csgo-prac-docker"
+          LogConfiguration:
+            LogDriver: "awslogs"
+            Options:
+              awslogs-group: !Sub "/ecs/${AWS::StackName}-docker"
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: "ecs"
+          Environment:
+            - Name: "SERVER_HOSTNAME"
+              Value: !Ref ServerHostname
+            - Name: "SERVER_PASSWORD"
+              Value: !Ref ServerPassword
+            - Name: "RCON_PASSWORD"
+              Value: !Ref RconPassword
+            - Name: "STEAM_ACCOUNT"
+              Value: !Ref GameLoginToken
+            - Name: "AUTHKEY"
+              Value: !Ref WebApiKey
+            - Name: "SOURCEMOD_ADMINS"
+              Value: !Ref SourcemodAdmins
+          MountPoints:
+            - SourceVolume: data
+              ContainerPath: /home/steam/csgo
+              ReadOnly: false
+      Volumes:
+      - Name: data
+        EFSVolumeConfiguration:
+          FilesystemId: !Ref CsgoServerFileSystem
+          TransitEncryption: ENABLED
+          AuthorizationConfig:
+            AccessPointId: !Ref CsgoServerAccessPoint
+            IAM: ENABLED
+
+  CsgoServerTaskLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/ecs/${AWS::StackName}-docker"
+      RetentionInDays: 90
+
+
+  CsgoServerTaskSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: "Security group for the ECS Task"
+      VpcId: !Ref CsgoServerVPC
+      SecurityGroupEgress:
+        -
+          Description: "EFS mount port"
+          FromPort: 2049
+          IpProtocol: "tcp"
+          ToPort: 2049
+          CidrIp: 0.0.0.0/0
+        -
+          Description: "CSGO Server port"
+          FromPort: 27015
+          IpProtocol: "tcp"
+          ToPort: 27015
+          CidrIp: 0.0.0.0/0
+        -
+          Description: "CSGO TV port"
+          FromPort: 27020
+          IpProtocol: "tcp"
+          ToPort: 27020
+          CidrIp: 0.0.0.0/0
+        -
+          Description: "CSGO Server port"
+          FromPort: 27015
+          IpProtocol: "udp"
+          ToPort: 27015
+          CidrIp: 0.0.0.0/0
+        -
+          Description: "CSGO TV port"
+          FromPort: 27020
+          IpProtocol: "udp"
+          ToPort: 27020
+          CidrIp: 0.0.0.0/0
+
+
+  ###
+  # Roles
+  ##
+
+  ExecuteTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-execute-task-role"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+                - ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub "${AWS::StackName}-execute-task-policy"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessageBatch
+                  - sqs:SendMessage
+                  - ecs:RunTask
+                  - iam:GetRole
+                  - iam:PassRole
+                Resource:
+                  - !Ref CsgoServerTaskDefinition
+                  - !GetAtt ErrorQueue.Arn
+                  - !GetAtt CsgoServerTaskRole.Arn
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  '*'
+              - Effect: Allow
+                Action:
+                  - ecs:ListTasks
+                Resource:
+                  '*'
+                Condition:
+                  ArnEquals:
+                    ecs:cluster: !GetAtt CsgoServerCluster.Arn
+
+  CsgoServerTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-task-role"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub "${AWS::StackName}-task-policy"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - '*'
+              - Effect: Allow
+                Action:
+                  - elasticfilesystem:ClientMount
+                  - elasticfilesystem:ClientWrite
+                Resource:
+                  - !GetAtt CsgoServerAccessPoint.Arn

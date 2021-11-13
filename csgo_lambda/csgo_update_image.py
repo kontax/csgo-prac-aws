@@ -8,6 +8,7 @@ ECS_CLUSTER = os.environ.get('ECS_CLUSTER')
 TASK_DEFN = os.environ.get('TASK_DEFN')
 SUBNETS = os.environ.get('SUBNETS')
 SECURITY_GROUPS = os.environ.get('SECURITY_GROUPS')
+CONTAINER_NAME = os.environ.get('CONTAINER_NAME')
 
 
 def handler(event, context):
@@ -21,7 +22,7 @@ def handler(event, context):
 def get_env_overrides():
     return {
         'containerOverrides': [{
-            'name': 'csgo-prac-docker',
+            'name': CONTAINER_NAME,
             'environment': [{
                 'name': 'UPDATE_ONLY',
                 'value': '1'

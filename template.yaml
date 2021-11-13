@@ -50,7 +50,7 @@ Parameters:
   SourcemodAdmins:
     Type: String
     Description: Comma-separated Steam ID's who are able to run admin commands on the server
-    Default: '{{resolve:secretsmanager:csgo-docker/server-details:SecretString:WebApiKey}}'
+    Default: '{{resolve:secretsmanager:csgo-docker/server-details:SecretString:SourcemodAdmins}}'
 
 
 Globals:
@@ -67,34 +67,34 @@ Resources:
   CsgoUpdateScheduleRule:
     Type: AWS::Events::Rule
     Properties:
-      Description: Schedule for updating the server
+      Description: "Schedule for updating the server and plugins periodically"
       Name: !Sub "${AWS::StackName}-update-rule"
-      RoleArn: !Ref CsgoUpdateRuleRole
+        #RoleArn: !GetAtt ExecuteTaskRole.Arn
       ScheduleExpression: cron(0 0 * * ? *)
       State: ENABLED
       Targets:
         -
           Id: !Sub "${AWS::StackName}-scheduler"
-          Arn: !GetAtt: CsgoServerCluster.Arn
+          Arn: !GetAtt CsgoServerCluster.Arn
+          RoleArn: !GetAtt CsgoServerTaskRole.Arn
+          Input: !Sub '{ "containerOverrides": [ { "name": "${AWS::StackName}-container", "environment": [ { "name": "UPDATE_ONLY", "value": 1 } ] } ] }'
           EcsParameters:
             LaunchType: FARGATE
             NetworkConfiguration:
-              AwsVcpConfiguration:
+              AwsVpcConfiguration:
                 Subnets:
                   - !Ref CsgoServerSubnet
                 SecurityGroups:
                   - !Ref CsgoServerTaskSecurityGroup
                 AssignPublicIp: ENABLED
-            TaskDefinition: !Ref CsgoServerTaskDefinition
-            #TODO: Environment Variables??
+            TaskDefinitionArn: !Ref CsgoServerTaskDefinition
 
-
-  CsgoServerFunction:
+  CsgoServerUpdateFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub "${AWS::StackName}-scheduler"
+      FunctionName: !Sub "${AWS::StackName}-update"
       Description: Scheduled execution of the CsgoServer ECS task
-      CodeUri: csgo_update
+      CodeUri: csgo_lambda
       Handler: csgo_update_image.handler
       Timeout: 60
       Role: !GetAtt ExecuteTaskRole.Arn
@@ -110,11 +110,7 @@ Resources:
           TASK_DEFN: !Ref CsgoServerTaskDefinition
           SUBNETS: !Ref CsgoServerSubnet
           SECURITY_GROUPS: !Ref CsgoServerTaskSecurityGroup
-      Events:
-        RepoUpdateSchedule:
-          Type: Schedule
-          Properties:
-            Schedule: cron(0 0 * * ? *)
+          CONTAINER_NAME: !Sub "${AWS::StackName}-container"
       Layers:
         - !Ref AwsLayer
 
@@ -381,6 +377,18 @@ Resources:
           FromPort: 27020
           IpProtocol: "udp"
           ToPort: 27020
+          CidrIp: 0.0.0.0/0
+        -
+          Description: "HTTP port for non-SSL traffic"
+          FromPort: 80
+          IpProtocol: "tcp"
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        -
+          Description: "HTTP port for SSL traffic"
+          FromPort: 443
+          IpProtocol: "tcp"
+          ToPort: 443
           CidrIp: 0.0.0.0/0
 
 

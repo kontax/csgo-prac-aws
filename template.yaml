@@ -1,9 +1,9 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  aws-urlwatch
+  csgo-prac-aws
 
-  Scheduled running of URLWatch within an ECS task
+  CloudFormation template for updating and running a CSGO server on docker.
 
 
 Parameters:
@@ -89,14 +89,13 @@ Resources:
             #TODO: Environment Variables??
 
 
-
   CsgoServerFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub "${AWS::StackName}-scheduler"
       Description: Scheduled execution of the CsgoServer ECS task
-      CodeUri: urlwatch_lambda
-      Handler: urlwatch_start_ecs.handler
+      CodeUri: csgo_update
+      Handler: csgo_update_image.handler
       Timeout: 60
       Role: !GetAtt ExecuteTaskRole.Arn
       DeadLetterQueue:

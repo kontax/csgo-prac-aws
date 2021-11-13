@@ -297,8 +297,8 @@ Resources:
       - CsgoServerFileSystem
     Properties:
       Family: !Sub "${AWS::StackName}-task"
-      Cpu: "256"
-      Memory: "512"
+      Cpu: "2048"
+      Memory: "8192"
       NetworkMode: "awsvpc"
       RequiresCompatibilities:
         - "FARGATE"

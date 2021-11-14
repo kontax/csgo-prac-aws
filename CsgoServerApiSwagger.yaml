@@ -18,7 +18,7 @@ paths:
                 $ref: "#/components/schemas/Empty"
       x-amazon-apigateway-integration:
         uri:
-          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CsgoServerUpdateFunction}/invocations
+          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CsgoServerUpdateFunction.Arn}/invocations
         responses:
           default:
             statusCode: "200"
@@ -39,7 +39,7 @@ paths:
                 $ref: "#/components/schemas/Empty"
       x-amazon-apigateway-integration:
         uri:
-          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CsgoServerStartFunction}/invocations
+          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CsgoServerStartFunction.Arn}/invocations
         responses:
           default:
             statusCode: "200"
@@ -50,7 +50,7 @@ paths:
 
   # Server Status
   /status:
-    post:
+    get:
       responses:
         200:
           description: "200 response"
@@ -60,7 +60,7 @@ paths:
                 $ref: "#/components/schemas/Empty"
       x-amazon-apigateway-integration:
         uri:
-          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CsgoServerStatusFunction}/invocations
+          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CsgoServerStatusFunction.Arn}/invocations
         responses:
           default:
             statusCode: "200"
@@ -81,7 +81,7 @@ paths:
                 $ref: "#/components/schemas/Empty"
       x-amazon-apigateway-integration:
         uri:
-          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CsgoServerStopFunction}/invocations
+          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CsgoServerStopFunction.Arn}/invocations
         responses:
           default:
             statusCode: "200"

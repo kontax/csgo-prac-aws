@@ -67,7 +67,7 @@ Resources:
   CsgoServerApi:
     Type: AWS::Serverless::Api
     Properties:
-      StageName: !Ref StageName
+      StageName: prod
       DefinitionBody:
         Fn::Transform:
           Name: AWS::Include
@@ -147,7 +147,7 @@ Resources:
   CsgoServerStartFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub "${AWS::StackName}-run"
+      FunctionName: !Sub "${AWS::StackName}-start"
       Description: Start the container to run the CSGO server
       CodeUri: csgo_lambda
       Handler: csgo_start_server.handler
@@ -179,7 +179,7 @@ Resources:
   CsgoServerStatusFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub "${AWS::StackName}-run"
+      FunctionName: !Sub "${AWS::StackName}-status"
       Description: Get the status for running CSGO servers
       CodeUri: csgo_lambda
       Handler: csgo_get_server_status.handler
@@ -200,7 +200,7 @@ Resources:
           Type: Api
           Properties:
             Path: /status
-            Method: post
+            Method: get
             RestApiId: !Ref CsgoServerApi
       Layers:
         - !Ref AwsLayer
@@ -208,7 +208,7 @@ Resources:
   CsgoServerStopFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub "${AWS::StackName}-run"
+      FunctionName: !Sub "${AWS::StackName}-stop"
       Description: Stop the container running the CSGO server
       CodeUri: csgo_lambda
       Handler: csgo_stop_server.handler

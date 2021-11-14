@@ -64,6 +64,38 @@ Resources:
   # Functions
   ##
 
+  CsgoServerApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: !Ref StageName
+      EndpointConfiguration: REGIONAL
+      DefinitionBody:
+        swagger: 2.0
+        info:
+          title: "CSGOServerAPI"
+        paths:
+          /update:
+            post:
+              x-amazon-apigateway-integration:
+                uri:
+                  Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CsgoServerUpdateFunction.Arn}/invocations
+                responses: {}
+                httpMethod: "POST"
+                type: "aws_proxy"
+              x-amazon-apigateway-policy:
+                Version: "2012-10-17"
+                Statement:
+                  - Effect: Allow
+                    Principal: '*'
+                    Action:
+                      - execute-api:Invoke
+                    Condition:
+                      IpAddress:
+                        aws:sourceIp:
+                          - "192.30.252.0/22"
+                          - "185.199.108.0/22"
+                          - "140.82.112.0/20"
+
   CsgoUpdateScheduleRule:
     Type: AWS::Events::Rule
     Properties:
@@ -111,6 +143,102 @@ Resources:
           SUBNETS: !Ref CsgoServerSubnet
           SECURITY_GROUPS: !Ref CsgoServerTaskSecurityGroup
           CONTAINER_NAME: !Sub "${AWS::StackName}-container"
+      Events:
+        UpdateCsgoServerEvent:
+          Type: Api
+          Properties:
+            Path: /update
+            Method: post
+            RestApiId: !Ref CsgoServerApi
+      Layers:
+        - !Ref AwsLayer
+
+  CsgoServerStartFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-run"
+      Description: Start the container to run the CSGO server
+      CodeUri: csgo_lambda
+      Handler: csgo_start_server.handler
+      Timeout: 60
+      Role: !GetAtt ExecuteTaskRole.Arn
+      DeadLetterQueue:
+        TargetArn: !GetAtt ErrorQueue.Arn
+        Type: SQS
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt ErrorQueue.QueueName
+      Environment:
+        Variables:
+          ECS_CLUSTER: !Ref CsgoServerCluster
+          TASK_DEFN: !Ref CsgoServerTaskDefinition
+          SUBNETS: !Ref CsgoServerSubnet
+          SECURITY_GROUPS: !Ref CsgoServerTaskSecurityGroup
+          CONTAINER_NAME: !Sub "${AWS::StackName}-container"
+      Events:
+        StartCsgoServerEvent:
+          Type: Api
+          Properties:
+            Path: /start
+            Method: post
+            RestApiId: !Ref CsgoServerApi
+      Layers:
+        - !Ref AwsLayer
+
+  CsgoServerStatusFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-run"
+      Description: Get the status for running CSGO servers
+      CodeUri: csgo_lambda
+      Handler: csgo_get_server_status.handler
+      Timeout: 60
+      Role: !GetAtt ExecuteTaskRole.Arn
+      DeadLetterQueue:
+        TargetArn: !GetAtt ErrorQueue.Arn
+        Type: SQS
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt ErrorQueue.QueueName
+      Environment:
+        Variables:
+          ECS_CLUSTER: !Ref CsgoServerCluster
+          TASK_FAMILY: !Sub "${AWS::StackName}-task"
+      Events:
+        GetCsgoServerStatusEvent:
+          Type: Api
+          Properties:
+            Path: /status
+            Method: post
+            RestApiId: !Ref CsgoServerApi
+      Layers:
+        - !Ref AwsLayer
+
+  CsgoServerStopFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-run"
+      Description: Stop the container running the CSGO server
+      CodeUri: csgo_lambda
+      Handler: csgo_stop_server.handler
+      Timeout: 60
+      Role: !GetAtt ExecuteTaskRole.Arn
+      DeadLetterQueue:
+        TargetArn: !GetAtt ErrorQueue.Arn
+        Type: SQS
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt ErrorQueue.QueueName
+      Environment:
+        Variables:
+          ECS_CLUSTER: !Ref CsgoServerCluster
+      Events:
+        StopCsgoServerEvent:
+          Type: Api
+          Properties:
+            Path: /stop
+            Method: post
+            RestApiId: !Ref CsgoServerApi
       Layers:
         - !Ref AwsLayer
 

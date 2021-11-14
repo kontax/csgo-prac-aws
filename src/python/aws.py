@@ -67,10 +67,11 @@ def start_ecs_task(cluster, task_definition, subnets, security_groups, overrides
         overrides=overrides
     )
     print(f"Run task complete: {str(response)}")
+    return response['tasks']
 
 
-def get_running_task_count(cluster, task_definition):
-    """ Retrieves the number of ECS tasks for a specified cluster and task
+def get_running_tasks(cluster, task_definition):
+    """ Retrieves the list of ECS task arns for a specified cluster and task
     family that are currently either running or are in a pending state waiting
     to be run.
 
@@ -79,7 +80,7 @@ def get_running_task_count(cluster, task_definition):
         task_definition (str): The family of task to search for
 
     Returns:
-        (int): The number of tasks in a running/soon to be running state
+        dict: A JSON of task ARNs in a running/soon to be running state
     """
 
     client = boto3.client('ecs')
@@ -88,7 +89,49 @@ def get_running_task_count(cluster, task_definition):
         family=task_definition,
         desiredStatus="RUNNING"
     )
+    return response['taskArns']
+
+
+def get_running_task_count(cluster, task_family):
+    """ Retrieves the number of ECS tasks for a specified cluster and task
+    family that are currently either running or are in a pending state waiting
+    to be run.
+
+    Args:
+        cluster (str): The name of the cluster containing the running tasks
+        task_family (str): The family of task to search for
+
+    Returns:
+        (int): The number of tasks in a running/soon to be running state
+    """
+
+    client = boto3.client('ecs')
+    response = client.list_tasks(
+        cluster=cluster,
+        family=task_family,
+        desiredStatus="RUNNING"
+    )
     return len(response['taskArns'])
+
+
+def get_task_details(cluster, task_arns):
+    """ Get details of the tasks specified
+
+    Args:
+        cluster (str): Name of the cluster to check
+        task_arns (list): List of task arns to check
+
+    Returns:
+        dict: Details of the tasks specified
+    """
+
+    client = boto3.client('ecs')
+    response = client.describe_tasks(
+        cluster=cluster,
+        tasks=task_arns
+    )
+
+    return response['tasks']
 
 
 def get_dynamo_resource():

@@ -68,33 +68,24 @@ Resources:
     Type: AWS::Serverless::Api
     Properties:
       StageName: !Ref StageName
-      EndpointConfiguration: REGIONAL
       DefinitionBody:
-        swagger: 2.0
-        info:
-          title: "CSGOServerAPI"
-        paths:
-          /update:
-            post:
-              x-amazon-apigateway-integration:
-                uri:
-                  Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CsgoServerUpdateFunction.Arn}/invocations
-                responses: {}
-                httpMethod: "POST"
-                type: "aws_proxy"
-              x-amazon-apigateway-policy:
-                Version: "2012-10-17"
-                Statement:
-                  - Effect: Allow
-                    Principal: '*'
-                    Action:
-                      - execute-api:Invoke
-                    Condition:
-                      IpAddress:
-                        aws:sourceIp:
-                          - "192.30.252.0/22"
-                          - "185.199.108.0/22"
-                          - "140.82.112.0/20"
+        Fn::Transform:
+          Name: AWS::Include
+          Parameters:
+            Location: CsgoServerApiSwagger.yaml
+      Auth:
+        ResourcePolicy:
+          CustomStatements:
+            - Effect: Allow
+              Principal: "*"
+              Resource:
+                - execute-api:/*/*/*
+              Action:
+                - execute-api:Invoke
+#              Condition:
+#                IpAddress:
+#                  aws:sourceIp:
+#                    - "74.125.0.0/16"
 
   CsgoUpdateScheduleRule:
     Type: AWS::Events::Rule

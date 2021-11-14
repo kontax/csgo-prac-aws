@@ -64,29 +64,6 @@ Resources:
   # Functions
   ##
 
-  CsgoServerApi:
-    Type: AWS::Serverless::Api
-    Properties:
-      StageName: prod
-      DefinitionBody:
-        Fn::Transform:
-          Name: AWS::Include
-          Parameters:
-            Location: CsgoServerApiSwagger.yaml
-      Auth:
-        ResourcePolicy:
-          CustomStatements:
-            - Effect: Allow
-              Principal: "*"
-              Resource:
-                - execute-api:/*/*/*
-              Action:
-                - execute-api:Invoke
-#              Condition:
-#                IpAddress:
-#                  aws:sourceIp:
-#                    - "74.125.0.0/16"
-
   CsgoUpdateScheduleRule:
     Type: AWS::Events::Rule
     Properties:
@@ -99,7 +76,7 @@ Resources:
         -
           Id: !Sub "${AWS::StackName}-scheduler"
           Arn: !GetAtt CsgoServerCluster.Arn
-          RoleArn: !GetAtt CsgoServerTaskRole.Arn
+          RoleArn: !GetAtt ExecuteTaskRole.Arn
           Input: !Sub '{ "containerOverrides": [ { "name": "${AWS::StackName}-container", "environment": [ { "name": "UPDATE_ONLY", "value": 1 } ] } ] }'
           EcsParameters:
             LaunchType: FARGATE
@@ -344,6 +321,66 @@ Resources:
       Type: A
 
   ###
+  # API
+  ##
+
+  CsgoServerApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      EndpointConfiguration: REGIONAL
+      DefinitionBody:
+        Fn::Transform:
+          Name: AWS::Include
+          Parameters:
+            Location: CsgoServerApiSwagger.yaml
+      Auth:
+        ResourcePolicy:
+          CustomStatements:
+            - Effect: Allow
+              Principal: "*"
+              Resource:
+                - execute-api:/*/*/*
+              Action:
+                - execute-api:Invoke
+
+  CsgoServerApiCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Sub "csgo-service.${DnsHostname}"
+      DomainValidationOptions:
+        -
+          DomainName: !Sub "csgo-service.${DnsHostname}"
+          HostedZoneId: !Ref HostedZoneId
+
+  CsgoServerApiDomainName:
+    Type: AWS::ApiGateway::DomainName
+    Properties:
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      RegionalCertificateArn: !Ref CsgoServerApiCertificate
+      DomainName: !Sub "csgo-service.${DnsHostname}"
+
+  CsgoServerApiMapping:
+    Type: AWS::ApiGateway::BasePathMapping
+    Properties:
+      BasePath: v1
+      DomainName: !Ref CsgoServerApiDomainName
+      RestApiId: !Ref CsgoServerApi
+      Stage: !Ref CsgoServerApi.Stage
+
+  CsgoStatusRecordSet:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      Name: !Sub "csgo-service.${DnsHostname}"
+      Type: A
+      AliasTarget:
+        HostedZoneId: !GetAtt CsgoServerApiDomainName.RegionalHostedZoneId
+        DNSName: !GetAtt CsgoServerApiDomainName.RegionalDomainName
+      HostedZoneId: !Ref HostedZoneId
+
+  ###
   # EFS
   ##
 
@@ -527,6 +564,7 @@ Resources:
               Service:
                 - lambda.amazonaws.com
                 - ecs-tasks.amazonaws.com
+                - events.amazonaws.com
             Action: sts:AssumeRole
       Policies:
         - PolicyName: !Sub "${AWS::StackName}-execute-task-policy"

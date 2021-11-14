@@ -348,6 +348,7 @@ Resources:
     Type: AWS::CertificateManager::Certificate
     Properties:
       DomainName: !Sub "csgo-service.${DnsHostname}"
+      ValidationMethod: DNS
       DomainValidationOptions:
         -
           DomainName: !Sub "csgo-service.${DnsHostname}"
@@ -365,7 +366,7 @@ Resources:
   CsgoServerApiMapping:
     Type: AWS::ApiGateway::BasePathMapping
     Properties:
-      BasePath: v1
+      BasePath: ""
       DomainName: !Ref CsgoServerApiDomainName
       RestApiId: !Ref CsgoServerApi
       Stage: !Ref CsgoServerApi.Stage

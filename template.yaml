@@ -436,8 +436,8 @@ Resources:
       Name: !Sub "csgo-service.${DnsHostname}"
       Type: A
       AliasTarget:
-        HostedZoneId: !GetAtt CsgoStatusWebsiteApiDomainName.RegionalHostedZoneId
-        DNSName: !GetAtt CsgoStatusWebsiteApiDomainName.RegionalDomainName
+        HostedZoneId: "Z1BKCTXD74EZPE" # The S3 eu-west-1 hosted zone ID
+        DNSName: "s3-website-eu-west-1.amazonaws.com" # S3 eu-west-1 DNS
       HostedZoneId: !Ref HostedZoneId
 
   ###

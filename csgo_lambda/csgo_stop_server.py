@@ -25,7 +25,8 @@ def handler(event, context):
     """
 
     print(json.dumps(event))
-    task_arn = event['task_arn']
+    body = json.loads(event['body'])
+    task_arn = body['task_arn']
     response = stop_task(ECS_CLUSTER, task_arn)
 
     return return_code(200, {'task_status': response})

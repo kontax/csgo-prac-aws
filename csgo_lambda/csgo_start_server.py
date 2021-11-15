@@ -38,9 +38,10 @@ def handler(event, context):
     """
 
     print(json.dumps(event))
+    body = json.loads(event['body'])
     subnets = SUBNETS.split(',')
     security_groups = SECURITY_GROUPS.split(',')
-    env_pairs = create_name_value_pairs(event)
+    env_pairs = create_name_value_pairs(body)
     task_details = start_ecs_task(
             ECS_CLUSTER, TASK_DEFN, subnets, security_groups,
             get_env_overrides(env_pairs))

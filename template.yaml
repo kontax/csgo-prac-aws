@@ -346,11 +346,11 @@ Resources:
   CsgoServerApiCertificate:
     Type: AWS::CertificateManager::Certificate
     Properties:
-      DomainName: !Sub "csgo-service.${DnsHostname}"
+      DomainName: !Sub "csgo-api.${DnsHostname}"
       ValidationMethod: DNS
       DomainValidationOptions:
         -
-          DomainName: !Sub "csgo-service.${DnsHostname}"
+          DomainName: !Sub "csgo-api.${DnsHostname}"
           HostedZoneId: !Ref HostedZoneId
 
   CsgoServerApiDomainName:
@@ -360,7 +360,7 @@ Resources:
         Types:
           - REGIONAL
       RegionalCertificateArn: !Ref CsgoServerApiCertificate
-      DomainName: !Sub "csgo-service.${DnsHostname}"
+      DomainName: !Sub "csgo-api.${DnsHostname}"
 
   CsgoServerApiMapping:
     Type: AWS::ApiGateway::BasePathMapping
@@ -373,11 +373,71 @@ Resources:
   CsgoStatusRecordSet:
     Type: AWS::Route53::RecordSet
     Properties:
-      Name: !Sub "csgo-service.${DnsHostname}"
+      Name: !Sub "csgo-api.${DnsHostname}"
       Type: A
       AliasTarget:
         HostedZoneId: !GetAtt CsgoServerApiDomainName.RegionalHostedZoneId
         DNSName: !GetAtt CsgoServerApiDomainName.RegionalDomainName
+      HostedZoneId: !Ref HostedZoneId
+
+
+  ###
+  # Static Website
+  ##
+
+  CsgoStatusWebsiteBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "csgo-service.${DnsHostname}"
+      AccessControl: PublicRead
+      MetricsConfigurations:
+        - Id: EntireBucket
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: error.html
+
+  CsgoStatusWebsiteBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref CsgoStatusWebsiteBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: PublicReadGetObject
+            Effect: Allow
+            Principal: '*'
+            Action:
+              - s3:GetObject
+            Resource:
+              - !Sub "${CsgoStatusWebsiteBucket.Arn}/*"
+
+  CsgoStatusWebsiteApiCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Sub "csgo-service.${DnsHostname}"
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        -
+          DomainName: !Sub "csgo-service.${DnsHostname}"
+          HostedZoneId: !Ref HostedZoneId
+
+  CsgoStatusWebsiteApiDomainName:
+    Type: AWS::ApiGateway::DomainName
+    Properties:
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      RegionalCertificateArn: !Ref CsgoStatusWebsiteApiCertificate
+      DomainName: !Sub "csgo-service.${DnsHostname}"
+
+  CsgoStatusWebsiteRecordSet:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      Name: !Sub "csgo-service.${DnsHostname}"
+      Type: A
+      AliasTarget:
+        HostedZoneId: !GetAtt CsgoStatusWebsiteApiDomainName.RegionalHostedZoneId
+        DNSName: !GetAtt CsgoStatusWebsiteApiDomainName.RegionalDomainName
       HostedZoneId: !Ref HostedZoneId
 
   ###
@@ -635,6 +695,12 @@ Outputs:
     Description: Hostname used to connet to the ECS instance
     Value: !Ref CsgoServerHostname
   ServiceHostname:
-    Description: Hostname used to connet to the web-based service
+    Description: Hostname used to connet to the API
     Value: !Ref CsgoServerApiDomainName
+  StatusWebsiteHostname:
+    Description: Hostname used to connet to the web-based service
+    Value: !Ref CsgoStatusWebsiteApiDomainName
+  ServiceS3Url:
+    Description: S3 bucket to store website files in
+    Value: !Ref CsgoStatusWebsiteBucket
 

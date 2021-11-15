@@ -69,7 +69,6 @@ Resources:
     Properties:
       Description: "Schedule for updating the server and plugins periodically"
       Name: !Sub "${AWS::StackName}-update-rule"
-        #RoleArn: !GetAtt ExecuteTaskRole.Arn
       ScheduleExpression: cron(0 0 * * ? *)
       State: ENABLED
       Targets:
@@ -629,3 +628,13 @@ Resources:
                   - elasticfilesystem:ClientWrite
                 Resource:
                   - !GetAtt CsgoServerAccessPoint.Arn
+
+
+Outputs:
+  ServerHostname:
+    Description: Hostname used to connet to the ECS instance
+    Value: !Ref CsgoServerHostname
+  ServiceHostname:
+    Description: Hostname used to connet to the web-based service
+    Value: !Ref CsgoServerApiDomainName
+

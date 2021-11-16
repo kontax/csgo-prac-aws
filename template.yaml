@@ -27,30 +27,37 @@ Parameters:
     Default: '{{resolve:ssm:pushoverUser:1}}'
 
   # Server Details
+  EncryptionKeyId:
+    Type: String
+    Description: The encryption key used to encrypt the secrets within Secret Manager
+  SecretName:
+    Type: String
+    Description: Name of the secret within Secrets Manager
+    Default: 'csgo-docker/server-details'
   ServerHostname:
     Type: String
-    Description: Hostname of the server
-    Default: '{{resolve:secretsmanager:csgo-docker/server-details:SecretString:ServerHostname}}'
+    Description: JSON key of the server hostname within Secrets Manager
+    Default: 'ServerHostname'
   ServerPassword:
     Type: String
-    Description: Password for the server
-    Default: '{{resolve:secretsmanager:csgo-docker/server-details:SecretString:ServerPassword}}'
+    Description: JSON key of the server password within Secrets Manager
+    Default: 'ServerPassword'
   RconPassword:
     Type: String
-    Description: Password for rcon commands within the server
-    Default: '{{resolve:secretsmanager:csgo-docker/server-details:SecretString:RconPassword}}'
+    Description: JSON key for the password for rcon commands within the server within Secrets Manager
+    Default: 'RconPassword'
   GameLoginToken:
     Type: String
-    Description: Steam token used to log into the steam servers
-    Default: '{{resolve:secretsmanager:csgo-docker/server-details:SecretString:GameLoginToken}}'
+    Description: JSON key for the steam token used to log into the steam servers within Secrets Manager
+    Default: 'GameLoginToken'
   WebApiKey:
     Type: String
-    Description: API Key used to access maps from the Steam Workshop
-    Default: '{{resolve:secretsmanager:csgo-docker/server-details:SecretString:WebApiKey}}'
+    Description: JSON key for the API Key used to access maps from the Steam Workshop within Secrets Manager
+    Default: 'WebApiKey'
   SourcemodAdmins:
     Type: String
-    Description: Comma-separated Steam ID's who are able to run admin commands on the server
-    Default: '{{resolve:secretsmanager:csgo-docker/server-details:SecretString:SourcemodAdmins}}'
+    Description: JSON key for the comma-separated Steam ID's who are able to run admin commands on the server within Secrets Manager
+    Default: 'SourcemodAdmins'
 
 
 Globals:
@@ -92,7 +99,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub "${AWS::StackName}-update"
-      Description: Scheduled execution of the CsgoServer ECS task
+      Description: Manual execution of the CsgoServer ECS task
       CodeUri: csgo_lambda
       Handler: csgo_update_image.handler
       Timeout: 60
@@ -115,6 +122,38 @@ Resources:
           Type: Api
           Properties:
             Path: /update
+            Method: post
+            RestApiId: !Ref CsgoServerApi
+      Layers:
+        - !Ref AwsLayer
+
+  CsgoServerDeleteFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-delete"
+      Description: Delete all data from the CSGO volume
+      CodeUri: csgo_lambda
+      Handler: csgo_delete_volume.handler
+      Timeout: 60
+      Role: !GetAtt ExecuteTaskRole.Arn
+      DeadLetterQueue:
+        TargetArn: !GetAtt ErrorQueue.Arn
+        Type: SQS
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt ErrorQueue.QueueName
+      Environment:
+        Variables:
+          ECS_CLUSTER: !Ref CsgoServerCluster
+          TASK_DEFN: !Ref CsgoServerTaskDefinition
+          SUBNETS: !Ref CsgoServerSubnet
+          SECURITY_GROUPS: !Ref CsgoServerTaskSecurityGroup
+          CONTAINER_NAME: !Sub "${AWS::StackName}-container"
+      Events:
+        UpdateCsgoServerEvent:
+          Type: Api
+          Properties:
+            Path: /delete
             Method: post
             RestApiId: !Ref CsgoServerApi
       Layers:
@@ -525,19 +564,19 @@ Resources:
               awslogs-group: !Sub "/ecs/${AWS::StackName}-docker"
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: "ecs"
-          Environment:
+          Secrets:
             - Name: "SERVER_HOSTNAME"
-              Value: !Ref ServerHostname
+              ValueFrom: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${SecretName}:${ServerHostname}::"
             - Name: "SERVER_PASSWORD"
-              Value: !Ref ServerPassword
+              ValueFrom: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${SecretName}:${ServerPassword}::"
             - Name: "RCON_PASSWORD"
-              Value: !Ref RconPassword
+              ValueFrom: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${SecretName}:${RconPassword}::"
             - Name: "STEAM_ACCOUNT"
-              Value: !Ref GameLoginToken
+              ValueFrom: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${SecretName}:${GameLoginToken}::"
             - Name: "AUTHKEY"
-              Value: !Ref WebApiKey
+              ValueFrom: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${SecretName}:${WebApiKey}::"
             - Name: "SOURCEMOD_ADMINS"
-              Value: !Ref SourcemodAdmins
+              ValueFrom: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${SecretName}:${SourcemodAdmins}::"
           MountPoints:
             - SourceVolume: data
               ContainerPath: /home/steam/csgo
@@ -606,6 +645,31 @@ Resources:
           IpProtocol: "tcp"
           ToPort: 443
           CidrIp: 0.0.0.0/0
+      SecurityGroupIngress:
+        -
+          Description: "CSGO Server port"
+          FromPort: 27015
+          IpProtocol: "tcp"
+          ToPort: 27015
+          CidrIp: 0.0.0.0/0
+        -
+          Description: "CSGO TV port"
+          FromPort: 27020
+          IpProtocol: "tcp"
+          ToPort: 27020
+          CidrIp: 0.0.0.0/0
+        -
+          Description: "CSGO Server port"
+          FromPort: 27015
+          IpProtocol: "udp"
+          ToPort: 27015
+          CidrIp: 0.0.0.0/0
+        -
+          Description: "CSGO TV port"
+          FromPort: 27020
+          IpProtocol: "udp"
+          ToPort: 27020
+          CidrIp: 0.0.0.0/0
 
 
   ###
@@ -653,6 +717,7 @@ Resources:
                 Action:
                   - ecs:ListTasks
                   - ecs:DescribeTasks
+                  - ecs:StopTask
                 Resource:
                   '*'
                 Condition:
@@ -689,6 +754,15 @@ Resources:
                   - elasticfilesystem:ClientWrite
                 Resource:
                   - !GetAtt CsgoServerAccessPoint.Arn
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                  - secretsmanager:DescribeSecret
+                  - secretsmanager:ListSecretVersionIds
+                  - kms:Decrypt
+                Resource:
+                  - !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${SecretName}"
+                  - !Sub "arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/${EncryptionKeyId}"
 
 
 Outputs:

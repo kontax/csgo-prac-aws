@@ -500,9 +500,6 @@ Resources:
               - "elasticfilesystem:ClientWrite"
             Principal:
               AWS: "*"
-      Tags:
-        - Key: Name
-          Value: !Sub "${AWS::StackName}-efs"
 
   CsgoServerMountPoint:
     Type: 'AWS::EFS::MountTarget'

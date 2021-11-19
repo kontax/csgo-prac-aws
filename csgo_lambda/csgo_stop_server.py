@@ -27,9 +27,10 @@ def handler(event, context):
     print(json.dumps(event))
     body = json.loads(event['body'])
     task_arn = body['task_arn']
-    response = stop_task(ECS_CLUSTER, task_arn)
+    stop_task(ECS_CLUSTER, task_arn)
+    msg = f"Stopping task {task_arn}"
 
-    return return_code(200, {'task_status': response})
+    return return_code(200, {'task_status': msg})
 
 
 def stop_task(cluster, task_arn):
@@ -40,19 +41,4 @@ def stop_task(cluster, task_arn):
         task=task_arn
     )
     task = resp['task']
-    output = {
-        'taskArn': task['taskArn'],
-        'startedAt': task['startedAt'].strftime(fmt),
-        'lastStatus': task['lastStatus'],
-        'desiredStatus': task['desiredStatus'],
-        'cpu': task['cpu'],
-        'memory': task['memory'],
-        'overrides': task['overrides'],
-        'stopCode': task['stopCode'] if 'stopCode' in task else None,
-        'stoppedReason': task['stoppedReason'] if 'stoppedReason' in task else None,
-        'stoppingAt': task['stoppingAt'].strftime(fmt) if 'stoppingAt' in task else None,
-        'stoppedAt': task['stoppedAt'].strftime(fmt) if 'stoppedAt' in task else None
-    }
-
-    return output
 

@@ -23,11 +23,11 @@ def handler(event, context):
         WORKSHOP_START_MAP: Which workshop map to start on (default: null)
 
     An example of the message sent is as follows:
-    {
-        "TICKRATE": "64",
-        "MAP": "de_mirage",
-        "MAPGROUP": "mg_active"
-    }
+    [
+        {"name": "TICKRATE", "value": "64"},
+        {"name": "MAP", "value", "de_dust2"},
+        {"name": "MAPGROUP", "value", "mg_active"}
+    ]
 
     Args:
         event (dict): Event getting passed to the function via an API
@@ -41,42 +41,15 @@ def handler(event, context):
     body = json.loads(event['body'])
     subnets = SUBNETS.split(',')
     security_groups = SECURITY_GROUPS.split(',')
-    env_pairs = create_name_value_pairs(body)
     task_details = start_ecs_task(
             ECS_CLUSTER, TASK_DEFN, subnets, security_groups,
-            get_env_overrides(env_pairs))
+            get_env_overrides(body))
 
     task_arns = []
     for task in task_details:
         task_arns.append(task['taskArn'])
 
     return return_code(200, {'taskArns': task_arns})
-
-
-def create_name_value_pairs(env_vars):
-    """ Creates name/value JSON pairs to send as ECS overrides
-
-    The event sent to the lambda contains details in the following format:
-    { 'tickrate': '128' }
-    Whereas to send the overrides to the container, they need to be in
-    the following format:
-    { 'name': 'tickrate', 'value': '128' }
-
-    Args:
-        env_vars (dict): Environment variables to convert
-
-    Returns:
-        dict: Same environment variables in the correct format
-    """
-
-    retval = []
-    for key in env_vars:
-        newdict = {}
-        newdict['name'] = key
-        newdict['value'] = env_vars[key]
-        retval.append(newdict)
-
-    return retval
 
 
 def get_env_overrides(environment_list):

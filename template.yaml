@@ -174,6 +174,8 @@ Resources:
       Policies:
         - SQSSendMessagePolicy:
             QueueName: !GetAtt ErrorQueue.QueueName
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt CsgoServerGetHostnameQueue.QueueName
       Environment:
         Variables:
           ECS_CLUSTER: !Ref CsgoServerCluster
@@ -181,6 +183,7 @@ Resources:
           SUBNETS: !Ref CsgoServerSubnet
           SECURITY_GROUPS: !Ref CsgoServerTaskSecurityGroup
           CONTAINER_NAME: !Sub "${AWS::StackName}-container"
+          GET_HOSTNAME_QUEUE: !Ref CsgoServerGetHostnameQueue
       Events:
         StartCsgoServerEvent:
           Type: Api
@@ -188,6 +191,38 @@ Resources:
             Path: /start
             Method: post
             RestApiId: !Ref CsgoServerApi
+      Layers:
+        - !Ref AwsLayer
+
+  CsgoServerGetHostnameFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-get-hostname"
+      Description: Assign a hostname to a newly created ECS task
+      CodeUri: csgo_lambda
+      Handler: csgo_get_hostname.handler
+      Timeout: 60
+      Role: !GetAtt CreateHostnameRole.Arn
+      DeadLetterQueue:
+        TargetArn: !GetAtt ErrorQueue.Arn
+        Type: SQS
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt ErrorQueue.QueueName
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt CsgoServerGetHostnameQueue.QueueName
+      Environment:
+        Variables:
+          ECS_CLUSTER: !Ref CsgoServerCluster
+          TASK_FAMILY: !Sub "${AWS::StackName}-task"
+          HOSTED_ZONE_ID: !Ref HostedZoneId
+          DNS_HOSTNAME: !Ref DnsHostname
+          GET_HOSTNAME_QUEUE: !Ref CsgoServerGetHostnameQueue
+      Events:
+        GetHostnameQueue:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt CsgoServerGetHostnameQueue.Arn
       Layers:
         - !Ref AwsLayer
 
@@ -277,6 +312,13 @@ Resources:
         - python3.9
       LicenseInfo: 'MIT'
       RetentionPolicy: Retain
+
+  CsgoServerGetHostnameQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${AWS::StackName}-get-hostname-queue"
+      DelaySeconds: 10
+      VisibilityTimeout: 60
 
   ErrorQueue:
     Type: AWS::SQS::Queue
@@ -710,6 +752,67 @@ Resources:
                   ArnEquals:
                     ecs:cluster: !GetAtt CsgoServerCluster.Arn
 
+  CreateHostnameRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-create-hostname-role"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+                - ecs-tasks.amazonaws.com
+                - events.amazonaws.com
+                - route53.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub "${AWS::StackName}-create-hostname-policy"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessageBatch
+                  - sqs:SendMessage
+                Resource:
+                  - !GetAtt ErrorQueue.Arn
+                  - !GetAtt CsgoServerGetHostnameQueue.Arn
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource:
+                  - !GetAtt CsgoServerGetHostnameQueue.Arn
+              - Effect: Allow
+                Action:
+                  - ec2:DescribeNetworkInterfaces
+                Resource:
+                  - '*'
+              - Effect: Allow
+                Action:
+                  - route53:ChangeResourceRecordSets
+                Resource:
+                  - !Sub 'arn:aws:route53:::hostedzone/${HostedZoneId}'
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  '*'
+              - Effect: Allow
+                Action:
+                  - ecs:ListTasks
+                  - ecs:DescribeTasks
+                Resource:
+                  '*'
+                Condition:
+                  ArnEquals:
+                    ecs:cluster: !GetAtt CsgoServerCluster.Arn
+
   ExecuteTaskRole:
     Type: AWS::IAM::Role
     Properties:
@@ -740,6 +843,7 @@ Resources:
                 Resource:
                   - !Ref CsgoServerTaskDefinition
                   - !GetAtt ErrorQueue.Arn
+                  - !GetAtt CsgoServerGetHostnameQueue.Arn
                   - !GetAtt CsgoServerTaskRole.Arn
               - Effect: Allow
                 Action:

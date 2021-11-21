@@ -134,6 +134,48 @@ def get_task_details(cluster, task_arns):
     return response['tasks']
 
 
+def get_public_ip(cluster, task_arn):
+    """ Get the public IP address for the task from the attached interface.
+
+    Each task should only have 1 attached network interface and 1 public IP.
+
+    Args:
+        cluster (str): Name of the cluster containing the task
+        task_arn (str): The ARN of the running task
+
+    Returns:
+        str: IP address of the task
+    """
+
+    # Get details of the task - there should only be one, as we're only passing
+    # one ARN into the function
+    tasks = get_task_details(cluster, [task_arn])
+    assert len(tasks) == 1
+    task = tasks[0]
+
+    # Get a list of the attached ENI's, there should only be one per task
+    enis = [a for a in task['attachments']
+            if 'type' in a and a['type'] == 'ElasticNetworkInterface']
+    assert len(enis) == 1
+
+    # Get the network ID for the ENI, again there should only be one
+    network_ids = [n['value'] for n in enis[0]['details']
+                   if n['name'] == 'networkInterfaceId']
+    print(network_ids)
+    assert len(network_ids) <= 1
+
+    # Return nothing if the server isn't ready
+    if len(network_ids) == 0:
+        return None
+
+    # Get the details of the ENI and return the IP address
+    resource = boto3.resource('ec2').NetworkInterface(network_ids[0])
+    if not resource.association_attribute:
+        return None
+
+    return resource.association_attribute['PublicIp']
+
+
 def get_dynamo_resource():
     """
     Get a dynamodb resource depending on which environment the function is
@@ -146,3 +188,39 @@ def get_dynamo_resource():
         dynamo = boto3.resource('dynamodb')
     return dynamo
 
+
+def create_route53_record(hosted_zone_id, hostname, ip_address):
+    """ Creates an A record within Route53 within the specified hosted zone,
+    pointing `hostname` to `ip_address`.
+
+    Args:
+        hosted_zone_id (str): Route53 hosted zone ID to create the record in
+        hostname (str): Hostname of the record
+        ip_address (str): IP Address to point the record to
+
+    Returns:
+        dict: Response of the API call
+    """
+
+    client = boto3.client('route53')
+    response = client.change_resource_record_sets(
+    ChangeBatch={
+        'Changes': [
+            {
+                'Action': 'CREATE',
+                'ResourceRecordSet': {
+                    'Name': hostname,
+                    'ResourceRecords': [
+                        {
+                            'Value': ip_address,
+                        },
+                    ],
+                    'TTL': 60,
+                    'Type': 'A',
+                },
+            },
+        ],
+        'Comment': 'Create CSGO server record',
+    },
+    HostedZoneId=hosted_zone_id,
+)

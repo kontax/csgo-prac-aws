@@ -1,3 +1,4 @@
+import boto3
 import json
 import os
 
@@ -30,8 +31,12 @@ def handler(event, context):
 
     output = []
     for task in task_details:
+
+        public_ip = get_public_ip(task)
+
         single_task = {
             'taskArn': task['taskArn'],
+            'publicIp': public_ip,
             'startedAt': task['startedAt'].strftime(fmt) if 'startedAt' in task else None,
             'lastStatus': task['lastStatus'],
             'desiredStatus': task['desiredStatus'],
@@ -48,4 +53,29 @@ def handler(event, context):
     return return_code(200, {'task_details': output})
 
 
+def get_public_ip(task):
+    """ Get the public IP address for the task from the attached interface.
+
+    Each task should only have 1 attached network interface and 1 public IP.
+
+    Args:
+        task (dict): The JSON returned from the describe_tasks function
+
+    Returns:
+        str: IP address of the task
+    """
+
+    # Get a list of the attached ENI's, there should only be one per task
+    enis = [a for a in task['attachments']
+            if 'type' in a and a['type'] == 'ElasticNetworkInterface']
+    assert len(enis) == 1
+
+    # Get the network ID for the ENI, again there should only be one
+    network_ids = [n['value'] for n in enis[0]['details']
+                   if n['name'] == 'networkInterfaceId']
+    assert len(network_ids) == 1
+
+    # Get the details of the ENI and return the IP address
+    resource = boto3.resource('ec2').NetworkInterface(network_ids[0])
+    return resource.association_attribute['PublicIp']
 

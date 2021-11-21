@@ -199,7 +199,7 @@ Resources:
       CodeUri: csgo_lambda
       Handler: csgo_get_server_status.handler
       Timeout: 60
-      Role: !GetAtt ExecuteTaskRole.Arn
+      Role: !GetAtt GetServerStatusRole.Arn
       DeadLetterQueue:
         TargetArn: !GetAtt ErrorQueue.Arn
         Type: SQS
@@ -657,6 +657,59 @@ Resources:
   # Roles
   ##
 
+  GetServerStatusRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-get-server-status-role"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+                - ecs-tasks.amazonaws.com
+                - events.amazonaws.com
+                - ec2.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub "${AWS::StackName}-get-server-status-policy"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessageBatch
+                  - sqs:SendMessage
+                  - iam:GetRole
+                  - iam:PassRole
+                Resource:
+                  - !Ref CsgoServerTaskDefinition
+                  - !GetAtt ErrorQueue.Arn
+                  - !GetAtt CsgoServerTaskRole.Arn
+              - Effect: Allow
+                Action:
+                  - ec2:DescribeNetworkInterfaces
+                Resource:
+                  - '*'
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  '*'
+              - Effect: Allow
+                Action:
+                  - ecs:ListTasks
+                  - ecs:DescribeTasks
+                  - ecs:StopTask
+                Resource:
+                  '*'
+                Condition:
+                  ArnEquals:
+                    ecs:cluster: !GetAtt CsgoServerCluster.Arn
+
   ExecuteTaskRole:
     Type: AWS::IAM::Role
     Properties:
@@ -670,6 +723,7 @@ Resources:
                 - lambda.amazonaws.com
                 - ecs-tasks.amazonaws.com
                 - events.amazonaws.com
+                - ec2.amazonaws.com
             Action: sts:AssumeRole
       Policies:
         - PolicyName: !Sub "${AWS::StackName}-execute-task-policy"
@@ -687,6 +741,11 @@ Resources:
                   - !Ref CsgoServerTaskDefinition
                   - !GetAtt ErrorQueue.Arn
                   - !GetAtt CsgoServerTaskRole.Arn
+              - Effect: Allow
+                Action:
+                  - ec2:DescribeNetworkInterfaces
+                Resource:
+                  - '*'
               - Effect: Allow
                 Action:
                   - logs:CreateLogGroup

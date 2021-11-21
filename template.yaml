@@ -320,18 +320,6 @@ Resources:
       AvailabilityZone: "eu-west-1a"
       MapPublicIpOnLaunch: True
 
-  CsgoServerNatGatewayEIP:
-    Type: AWS::EC2::EIP
-    DependsOn: CsgoServerInternetGatewayAttachment
-    Properties:
-      Domain: vpc
-
-  CsgoServerNatGateway:
-    Type: AWS::EC2::NatGateway
-    Properties:
-      AllocationId: !GetAtt CsgoServerNatGatewayEIP.AllocationId
-      SubnetId: !Ref CsgoServerSubnet
-
   CsgoServerRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
@@ -350,16 +338,6 @@ Resources:
     Properties:
       RouteTableId: !Ref CsgoServerRouteTable
       SubnetId: !Ref CsgoServerSubnet
-
-  CsgoServerHostname:
-    Type: AWS::Route53::RecordSet
-    Properties:
-      HostedZoneId: !Ref HostedZoneId
-      Name: !Sub "csgo.${DnsHostname}"
-      ResourceRecords:
-        - !Ref CsgoServerNatGatewayEIP
-      TTL: 900
-      Type: A
 
   ###
   # API
@@ -487,7 +465,7 @@ Resources:
   ##
 
   CsgoServerFileSystem:
-    Type: 'AWS::EFS::FileSystem'
+    Type: AWS::EFS::FileSystem
     Properties:
       PerformanceMode: generalPurpose
       Encrypted: true
@@ -502,7 +480,7 @@ Resources:
               AWS: "*"
 
   CsgoServerMountPoint:
-    Type: 'AWS::EFS::MountTarget'
+    Type: AWS::EFS::MountTarget
     Properties:
       FileSystemId: !Ref CsgoServerFileSystem
       SubnetId: !Ref CsgoServerSubnet
@@ -510,7 +488,7 @@ Resources:
       - !Ref CsgoServerEfsSecurityGroup
 
   CsgoServerAccessPoint:
-    Type: 'AWS::EFS::AccessPoint'
+    Type: AWS::EFS::AccessPoint
     Properties:
       FileSystemId: !Ref CsgoServerFileSystem
       PosixUser:
@@ -524,7 +502,7 @@ Resources:
         Path: "/home/steam/csgo"
 
   CsgoServerEfsSecurityGroup:
-    Type: "AWS::EC2::SecurityGroup"
+    Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: "Security group for the EFS"
       VpcId: !Ref CsgoServerVPC
@@ -601,7 +579,7 @@ Resources:
 
 
   CsgoServerTaskSecurityGroup:
-    Type: "AWS::EC2::SecurityGroup"
+    Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: "Security group for the ECS Task"
       VpcId: !Ref CsgoServerVPC
@@ -769,9 +747,6 @@ Resources:
 
 
 Outputs:
-  ServerHostname:
-    Description: Hostname used to connet to the ECS instance
-    Value: !Ref CsgoServerHostname
   ServiceHostname:
     Description: Hostname used to connet to the API
     Value: !Ref CsgoServerApiDomainName

@@ -3,6 +3,7 @@ import os
 
 from aws import start_ecs_task, send_to_queue
 from common import return_code
+from datetime import datetime
 
 ECS_CLUSTER = os.environ.get('ECS_CLUSTER')
 TASK_DEFN = os.environ.get('TASK_DEFN')
@@ -40,6 +41,8 @@ def handler(event, context):
 
     print(json.dumps(event))
     body = json.loads(event['body'])
+    fmt = "%Y-%m-%d %H:%M:%S"
+
     subnets = SUBNETS.split(',')
     security_groups = SECURITY_GROUPS.split(',')
     task_details = start_ecs_task(
@@ -49,8 +52,13 @@ def handler(event, context):
     task_arns = []
     for task in task_details:
 
+        msg = {
+            'task_arn': task['taskArn'],
+            'start_time': datetime.now().strftime(fmt)
+        }
+
         # Send task to get a hostname assigned
-        send_to_queue(GET_HOSTNAME_QUEUE, task['taskArn'])
+        send_to_queue(GET_HOSTNAME_QUEUE, json.dumps(msg))
         task_arns.append(task['taskArn'])
 
     return return_code(200, {'taskArns': task_arns})

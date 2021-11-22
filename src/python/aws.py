@@ -70,6 +70,25 @@ def start_ecs_task(cluster, task_definition, subnets, security_groups, overrides
     return response['tasks']
 
 
+def stop_ecs_task(cluster, task_arn):
+    """ Stop an ECS task given the task's ARN
+
+    Args:
+        cluster (str): The name of the cluster containing the task to stop
+        task_arn (str): The ARN of the task to stop
+
+    Returns:
+        dict: Details of the task being stopped
+    """
+
+    client = boto3.client('ecs')
+    resp = client.stop_task(
+        cluster=cluster,
+        task=task_arn
+    )
+    task = resp['task']
+
+
 def get_running_tasks(cluster, task_definition):
     """ Retrieves the list of ECS task arns for a specified cluster and task
     family that are currently either running or are in a pending state waiting
@@ -150,8 +169,13 @@ def get_public_ip(cluster, task_arn):
     # Get details of the task - there should only be one, as we're only passing
     # one ARN into the function
     tasks = get_task_details(cluster, [task_arn])
-    assert len(tasks) == 1
+    assert len(tasks) <= 1
+    if len(tasks) == 0:
+        print("No tasks found")
+        return None
+
     task = tasks[0]
+    print(task)
 
     # Get a list of the attached ENI's, there should only be one per task
     enis = [a for a in task['attachments']
@@ -224,3 +248,60 @@ def create_route53_record(hosted_zone_id, hostname, ip_address):
     },
     HostedZoneId=hosted_zone_id,
 )
+
+
+def delete_route53_record(hosted_zone_id, hostname, ip_address):
+    """ Deletes an existing Route53 A record within the specified hosted zone.
+
+    Args:
+        hosted_zone_id (str): Route53 hosted zone ID to delete the record from
+        hostname (str): Hostname of the record
+        ip_address (str): IP Address to point the record to
+
+    Returns:
+        dict: Response of the API call
+    """
+
+    client = boto3.client('route53')
+    response = client.change_resource_record_sets(
+    ChangeBatch={
+        'Changes': [
+            {
+                'Action': 'DELETE',
+                'ResourceRecordSet': {
+                    'Name': hostname,
+                    'ResourceRecords': [
+                        {
+                            'Value': ip_address,
+                        },
+                    ],
+                    'TTL': 60,
+                    'Type': 'A',
+                },
+            },
+        ],
+        'Comment': 'Create CSGO server record',
+    },
+    HostedZoneId=hosted_zone_id,
+)
+
+def retrieve_hostnames(hosted_zone_id, ip_address):
+    """ Retrieve a list of hostnames that are mapped to a specific IP address
+
+    As multiple hostnames can be mapped to an IP address, this function returns
+    a list of hostnames rather than a single one.
+
+    Args:
+        hosted_zone_id (str): Route53 hosted zone ID to delete the record from
+        ip_address (str): IP Address to point the record to
+
+    Returns:
+        List: A list of name values within Route53
+    """
+
+    client = boto3.client('route53')
+    response = client.list_resource_record_sets(HostedZoneId=hosted_zone_id)
+    hostnames = [ rec['Name'] for rec in response['ResourceRecordSets']
+                  if 'ResourceRecords' in rec
+                  and {'Value': ip_address} in rec['ResourceRecords']]
+    return hostnames

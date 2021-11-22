@@ -1,11 +1,12 @@
 import json
 import os
 
-from aws import get_running_tasks, get_task_details, get_public_ip
+from aws import get_running_tasks, get_task_details, get_public_ip, retrieve_hostnames
 from common import return_code
 
 ECS_CLUSTER = os.environ.get('ECS_CLUSTER')
 TASK_FAMILY = os.environ.get('TASK_FAMILY')
+HOSTED_ZONE_ID = os.environ.get('HOSTED_ZONE_ID')
 
 
 def handler(event, context):
@@ -32,10 +33,12 @@ def handler(event, context):
     for task in task_details:
 
         public_ip = get_public_ip(ECS_CLUSTER, task['taskArn'])
+        hostnames = retrieve_hostnames(HOSTED_ZONE_ID, public_ip)
 
         single_task = {
             'taskArn': task['taskArn'],
             'publicIp': public_ip,
+            'hostnames': hostnames,
             'startedAt': task['startedAt'].strftime(fmt) if 'startedAt' in task else None,
             'lastStatus': task['lastStatus'],
             'desiredStatus': task['desiredStatus'],

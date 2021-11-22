@@ -245,6 +245,7 @@ Resources:
         Variables:
           ECS_CLUSTER: !Ref CsgoServerCluster
           TASK_FAMILY: !Sub "${AWS::StackName}-task"
+          HOSTED_ZONE_ID: !Ref HostedZoneId
       Events:
         GetCsgoServerStatusEvent:
           Type: Api
@@ -263,7 +264,7 @@ Resources:
       CodeUri: csgo_lambda
       Handler: csgo_stop_server.handler
       Timeout: 60
-      Role: !GetAtt ExecuteTaskRole.Arn
+      Role: !GetAtt StopServerRole.Arn
       DeadLetterQueue:
         TargetArn: !GetAtt ErrorQueue.Arn
         Type: SQS
@@ -273,6 +274,7 @@ Resources:
       Environment:
         Variables:
           ECS_CLUSTER: !Ref CsgoServerCluster
+          HOSTED_ZONE_ID: !Ref HostedZoneId
       Events:
         StopCsgoServerEvent:
           Type: Api
@@ -734,6 +736,59 @@ Resources:
                   - ec2:DescribeNetworkInterfaces
                 Resource:
                   - '*'
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  '*'
+              - Effect: Allow
+                Action:
+                  - route53:ListResourceRecordSets
+                Resource:
+                  - !Sub 'arn:aws:route53:::hostedzone/${HostedZoneId}'
+              - Effect: Allow
+                Action:
+                  - ecs:ListTasks
+                  - ecs:DescribeTasks
+                Resource:
+                  '*'
+                Condition:
+                  ArnEquals:
+                    ecs:cluster: !GetAtt CsgoServerCluster.Arn
+
+  StopServerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-stop-server-role"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+                - ecs-tasks.amazonaws.com
+                - events.amazonaws.com
+                - route53.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub "${AWS::StackName}-stop-server-policy"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:DescribeNetworkInterfaces
+                Resource:
+                  - '*'
+              - Effect: Allow
+                Action:
+                  - route53:ChangeResourceRecordSets
+                  - route53:ListResourceRecordSets
+                Resource:
+                  - !Sub 'arn:aws:route53:::hostedzone/${HostedZoneId}'
               - Effect: Allow
                 Action:
                   - logs:CreateLogGroup

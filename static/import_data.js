@@ -1,4 +1,3 @@
-var HOSTNAME = ""
 
 $(function () {
     $('#table').bootstrapTable({data: []});
@@ -8,7 +7,7 @@ $(function () {
 });
 
 function getServerStatus() {
-    var url = `https://csgo-api.${HOSTNAME}/status`;
+    var url = `https://csgo-api.${SERVER_HOSTNAME}/status`;
     httpGetAsync(url, formatTable);
 }
 
@@ -58,20 +57,26 @@ function setButtonVisibility() {
 function startServer() {
     var form = $('#startServerParams');
     var data = form.serializeArray();
-    var url = `https://csgo-api.${HOSTNAME}/start`;
+    var url = `https://csgo-api.${SERVER_HOSTNAME}/start`;
     console.log(data);
     httpPostAsync(url, data, getServerStatus);
 }
 
 function stopServer(task_arn) {
     var serverData = { "task_arn": task_arn };
-    var url = `https://csgo-api.${HOSTNAME}/stop`;
+    var url = `https://csgo-api.${SERVER_HOSTNAME}/stop`;
     httpPostAsync(url, serverData, getServerStatus);
+}
+
+function StopFormatter(value, row, index) {
+  return `
+    <button type="submit" class="btn btn-primary" onclick="stopServer('${value}')">Stop</button>
+  `;
 }
 
 function LinkFormatter(value, row, index) {
   return `
-    <button type="submit" class="btn btn-primary" onclick="stopServer('${value}')">Stop</button>
+    <a href=steam://connect/${value}:27015/${SERVER_PASSWORD}>${value}</a>
   `;
 }
 

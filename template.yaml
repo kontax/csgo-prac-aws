@@ -76,7 +76,7 @@ Resources:
     Properties:
       Description: "Schedule for updating the server and plugins periodically"
       Name: !Sub "${AWS::StackName}-update-rule"
-      ScheduleExpression: cron(0 0 * * ? *)
+      ScheduleExpression: cron(0 0 * * 3 *)
       State: ENABLED
       Targets:
         -

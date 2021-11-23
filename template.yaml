@@ -76,7 +76,7 @@ Resources:
     Properties:
       Description: "Schedule for updating the server and plugins periodically"
       Name: !Sub "${AWS::StackName}-update-rule"
-      ScheduleExpression: cron(0 0 * * 3 *)
+      ScheduleExpression: cron(0 0 ? * 3 *)
       State: ENABLED
       Targets:
         -
@@ -573,8 +573,8 @@ Resources:
       - CsgoServerFileSystem
     Properties:
       Family: !Sub "${AWS::StackName}-task"
-      Cpu: "2048"
-      Memory: "8192"
+      Cpu: "512"
+      Memory: "1024"
       NetworkMode: "awsvpc"
       RequiresCompatibilities:
         - "FARGATE"

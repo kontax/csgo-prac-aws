@@ -54,6 +54,11 @@ function setButtonVisibility() {
     btn.prop('disabled', (mapChoice == "Choose Map..."));
 }
 
+function updateServer() {
+    var url = `https://csgo-api.${SERVER_HOSTNAME}/start`
+    httpPostAsync(url, [], getServerStatus);
+}
+
 function startServer() {
     var form = $('#startServerParams');
     var data = form.serializeArray();

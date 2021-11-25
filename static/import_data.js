@@ -55,7 +55,7 @@ function setButtonVisibility() {
 }
 
 function updateServer() {
-    var url = `https://csgo-api.${SERVER_HOSTNAME}/start`
+    var url = `https://csgo-api.${SERVER_HOSTNAME}/update`
     httpPostAsync(url, [], getServerStatus);
 }
 

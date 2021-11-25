@@ -33,10 +33,6 @@ function formatTable(data) {
                 "cpu": taskDetails["cpu"],
                 "memory": taskDetails["memory"],
                 "overrides": JSON.stringify(envVars),
-                "stopCode": taskDetails["stopCode"],
-                "stoppedReason": taskDetails["stoppedReason"],
-                "stoppingAt": taskDetails["stoppingAt"],
-                "stoppedAt": taskDetails["stoppedAt"],
                 "stopServer": taskDetails["taskArn"],
             });
         }

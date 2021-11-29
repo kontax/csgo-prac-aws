@@ -33,10 +33,6 @@ function formatTable(data) {
                 "cpu": taskDetails["cpu"],
                 "memory": taskDetails["memory"],
                 "overrides": JSON.stringify(envVars),
-                "stopCode": taskDetails["stopCode"],
-                "stoppedReason": taskDetails["stoppedReason"],
-                "stoppingAt": taskDetails["stoppingAt"],
-                "stoppedAt": taskDetails["stoppedAt"],
                 "stopServer": taskDetails["taskArn"],
             });
         }
@@ -52,6 +48,11 @@ function setButtonVisibility() {
         .value;
     var btn = $('#startServerButton');
     btn.prop('disabled', (mapChoice == "Choose Map..."));
+}
+
+function updateServer() {
+    var url = `https://csgo-api.${SERVER_HOSTNAME}/update`
+    httpPostAsync(url, [], getServerStatus);
 }
 
 function startServer() {

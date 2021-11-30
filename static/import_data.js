@@ -33,12 +33,22 @@ function formatTable(data) {
                 "cpu": taskDetails["cpu"],
                 "memory": taskDetails["memory"],
                 "overrides": JSON.stringify(envVars),
+                "serverReady": taskDetails["serverReady"],
+                "map": taskDetails["map"],
                 "stopServer": taskDetails["taskArn"],
             });
         }
     }
     console.log("Updating table with new data");
     $('#table').bootstrapTable('load', statusData);
+}
+
+function rowStyle(row, index) {
+    if(row['serverReady']) {
+        return { css: { "background-color": "rgba(0, 255, 0, 0.25)" } };
+    } else {
+        return { css: { "background-color": "rgba(255, 0, 0, 0.25)" } };
+    }
 }
 
 function setButtonVisibility() {
